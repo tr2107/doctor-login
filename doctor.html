@@ -1,0 +1,199 @@
+// main.jsx (or index.js for CRA)
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
+);
+
+// DoctorListingPage.jsx
+import React, { useEffect, useState, useMemo } from "react";
+import axios from "axios";
+import { useSearchParams } from "react-router-dom";
+
+const API_URL = "https://srijandubey.github.io/campus-api-mock/SRM-C1-25.json";
+
+const SPECIALTIES = [
+  "General Physician", "Dentist", "Dermatologist", "Paediatrician", "Gynaecologist",
+  "ENT", "Diabetologist", "Cardiologist", "Physiotherapist", "Endocrinologist",
+  "Orthopaedic", "Ophthalmologist", "Gastroenterologist", "Pulmonologist",
+  "Psychiatrist", "Urologist", "Dietitian/Nutritionist", "Psychologist",
+  "Sexologist", "Nephrologist", "Neurologist", "Oncologist", "Ayurveda", "Homeopath"
+];
+
+const DoctorListingPage = () => {
+  const [doctors, setDoctors] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const consultation = searchParams.get("consultation") || "";
+  const selectedSpecialties = searchParams.getAll("specialty");
+  const sort = searchParams.get("sort") || "";
+  const nameFilter = searchParams.get("name") || "";
+
+  useEffect(() => {
+    axios.get(API_URL).then((res) => {
+      setDoctors(res.data);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      const filtered = doctors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      setSuggestions(filtered.slice(0, 3));
+    } else {
+      setSuggestions([]);
+    }
+  }, [searchTerm, doctors]);
+
+  const updateURLParams = (key, value) => {
+    const params = new URLSearchParams(searchParams);
+    if (Array.isArray(value)) {
+      params.delete(key);
+      value.forEach(val => params.append(key, val));
+    } else if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    setSearchParams(params);
+  };
+
+  const toggleSpecialty = (specialty) => {
+    const current = new Set(selectedSpecialties);
+    current.has(specialty) ? current.delete(specialty) : current.add(specialty);
+    updateURLParams("specialty", Array.from(current));
+  };
+
+  const filteredDoctors = useMemo(() => {
+    let result = [...doctors];
+
+    if (nameFilter) {
+      result = result.filter(d => d.name.toLowerCase().includes(nameFilter.toLowerCase()));
+    }
+    if (consultation) {
+      result = result.filter(d => d.mode === consultation);
+    }
+    if (selectedSpecialties.length > 0) {
+      result = result.filter(d =>
+        selectedSpecialties.some(s => d.specialties.includes(s))
+      );
+    }
+    if (sort === "fees") {
+      result.sort((a, b) => a.fees - b.fees);
+    } else if (sort === "experience") {
+      result.sort((a, b) => b.experience - a.experience);
+    }
+    return result;
+  }, [doctors, nameFilter, consultation, selectedSpecialties, sort]);
+
+  return (
+    <div className="p-4">
+      <input
+        data-testid="autocomplete-input"
+        className="border p-2 w-full mb-4"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            updateURLParams("name", searchTerm);
+            setSuggestions([]);
+          }
+        }}
+        placeholder="Search doctor by name..."
+      />
+      {suggestions.length > 0 && (
+        <ul className="border mb-4">
+          {suggestions.map((d) => (
+            <li
+              data-testid="suggestion-item"
+              key={d.id}
+              className="p-2 cursor-pointer hover:bg-gray-100"
+              onClick={() => {
+                updateURLParams("name", d.name);
+                setSearchTerm(d.name);
+                setSuggestions([]);
+              }}
+            >
+              {d.name}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid grid-cols-4 gap-4">
+        <div>
+          <div data-testid="filter-header-moc">Consultation Mode</div>
+          <label>
+            <input
+              type="radio"
+              name="mode"
+              checked={consultation === "Video Consult"}
+              onChange={() => updateURLParams("consultation", "Video Consult")}
+              data-testid="filter-video-consult"
+            /> Video Consult
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="mode"
+              checked={consultation === "In Clinic"}
+              onChange={() => updateURLParams("consultation", "In Clinic")}
+              data-testid="filter-in-clinic"
+            /> In Clinic
+          </label>
+
+          <div data-testid="filter-header-speciality">Speciality</div>
+          {SPECIALTIES.map(s => (
+            <label key={s}>
+              <input
+                type="checkbox"
+                checked={selectedSpecialties.includes(s)}
+                onChange={() => toggleSpecialty(s)}
+                data-testid={`filter-specialty-${s.replaceAll("/", "-").replaceAll(" ", "-")}`}
+              /> {s}
+            </label>
+          ))}
+
+          <div data-testid="filter-header-sort">Sort</div>
+          <label>
+            <input
+              type="radio"
+              name="sort"
+              checked={sort === "fees"}
+              onChange={() => updateURLParams("sort", "fees")}
+              data-testid="sort-fees"
+            /> Fees (asc)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="sort"
+              checked={sort === "experience"}
+              onChange={() => updateURLParams("sort", "experience")}
+              data-testid="sort-experience"
+            /> Experience (desc)
+          </label>
+        </div>
+
+        <div className="col-span-3">
+          {filteredDoctors.map((doc) => (
+            <div key={doc.id} data-testid="doctor-card" className="border p-4 mb-4 rounded">
+              <div data-testid="doctor-name">{doc.name}</div>
+              <div data-testid="doctor-specialty">{doc.specialties.join(", ")}</div>
+              <div data-testid="doctor-experience">{doc.experience} years experience</div>
+              <div data-testid="doctor-fee">₹{doc.fees}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DoctorListingPage;
